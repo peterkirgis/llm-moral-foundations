@@ -1,0 +1,17 @@
+# ─── Python cache/files ─────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ─── VS Code settings ───────────────────────────────────────
+.vscode/
+*.code-workspace
+
+# ─── Jupyter checkpoints ────────────────────────────────────
+.ipynb_checkpoints/
+
+.DS_Store
+
+# ─── Scratch folder (all notebooks & scripts) ───────────────
+# Adjust "scratch/" to the relative path of your target folder
+scratch/
