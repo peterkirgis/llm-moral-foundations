@@ -14,7 +14,7 @@ vignettes = data.iloc[:,0].tolist()
 # randomize order of vignettes
 np.random.shuffle(vignettes)
 
-def run_survey_for_model(model_name, service, vignettes, data, moral_judgment_survey_results):
+def run_survey_for_model(model_name, service, vignettes, data, moral_judgment_survey_result, samples):
     """
     This function assumes that:
       - 'vignettes' is a list of dilemmas.
@@ -23,7 +23,7 @@ def run_survey_for_model(model_name, service, vignettes, data, moral_judgment_su
          (Here, we show the survey-creation code inline.)
     """
     # Select the model.
-    if model_name != "o1" and model_name != "o3-mini" and model_name != "gpt-4.5-preview" and model_name != "deepseek-reasoner":
+    if model_name != "o3-mini" and model_name != "gpt-4.5-preview" and model_name != "deepseek-reasoner":
       model = Model(model_name, service_name=service, logprobs=True)
     else:
       model = Model(model_name, service_name=service)
@@ -46,7 +46,7 @@ def run_survey_for_model(model_name, service, vignettes, data, moral_judgment_su
     moral_judgment_survey = Survey(questions=questions)
 
     # Run the survey.
-    moral_judgment_survey_results = moral_judgment_survey.by(model).run()
+    moral_judgment_survey_results = moral_judgment_survey.by(model).run(n=samples)
 
     # Process the results.
     results = []
@@ -63,12 +63,14 @@ def run_survey_for_model(model_name, service, vignettes, data, moral_judgment_su
 
         # Extract the survey response.
         response = moral_judgment_survey_results.select(f"answer.moral_judgment_{i}").to_list()
+        response = [x if x is not None else np.nan for x in response]
         comment = moral_judgment_survey_results.select(f"comment.moral_judgment_{i}_comment").to_list()
         raw_output = moral_judgment_survey_results.select(f"raw_model_response.moral_judgment_{i}_raw_model_response").to_list()
+        mean_response = np.nanmean(response)
 
         results.append({
             "Scenario": qtext,
-            "Answer": response[0] if response is not None else None,
+            "Answer": mean_response if response is not None else None,
             "Comment": comment[0] if comment is not None else None,
             "Raw Output": raw_output[0] if raw_output is not None else None
 
@@ -82,29 +84,49 @@ def run_survey_for_model(model_name, service, vignettes, data, moral_judgment_su
     return results_df, moral_judgment_survey_results
 
 # Our dictionary of models.
-model_dict = {
-    "openai" : ["gpt-3.5-turbo", "gpt-4-turbo", "gpt-4o", "o3-mini", "o1", "gpt-4.5-preview", "gpt-4.1"],
-    "google" : ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-2.5-pro-preview-03-25"],
-    "anthropic" : ["claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022", "claude-3-7-sonnet-20250219"],
-    "deep_infra" : ["meta-llama/Meta-Llama-3.1-70B-Instruct", "meta-llama/Meta-Llama-3.1-405B-Instruct"],
-    "deepseek" : ["deepseek-chat", "deepseek-reasoner"],
-    "xai" : ["grok-beta", "grok-2-1212"]
+sampled_model_dict = {
+    "openai" : ["gpt-4.5-preview", "o3-mini"],
+    "google" : ["gemini-2.0-flash", "gemini-2.5-flash-preview-04-17", "gemini-1.5-pro", "gemini-2.5-pro-preview-03-25"],
+    "anthropic" : ["claude-3-5-haiku-20241022", "claude-3-5-sonnet-20241022", "claude-3-7-sonnet-20250219" "claude-3-opus-20240229"],
+    "deep_infra" : ["meta-llama/Meta-Llama-3.1-70B-Instruct", "meta-llama/Meta-Llama-3.1-405B-Instruct", "meta-llama/Llama-4-Scout-17B-16E-Instruct"],
+    "deepseek" : ["deepseek-chat", "deepseek-reasoner"]
+}
+
+logprobs_model_dict = {
+   "openai" : ["gpt-3.5-turbo", "gpt-4-turbo", "gpt-4o", "gpt-4.1"],
+   "grok" : ["grok-2-1212", "grok-3-beta"]
 }
 
 # List to store results for all models.
-final_results_list = []
+sampled_results_list = []
 
 # For each service and model in our dictionary, run the survey and extract results.
-for service, models in model_dict.items():
+for service, models in sampled_model_dict.items():
     for model_name in models:
         print(f"Running survey for model: {model_name} ({service})")
         # Run the survey for this model.
-        results_df, model_response = run_survey_for_model(model_name, service, vignettes, data, moral_judgment_survey_results=None)
+        results_df, model_response = run_survey_for_model(model_name, service, vignettes, data, moral_judgment_survey_results=None, samples=10)
         # Note: The above function creates its own moral_judgment_survey_results.
-        final_results_list.append(results_df)
+        sampled_results_list.append(results_df)
 
 # Concatenate the individual DataFrames into one.
-final_df = pd.concat(final_results_list, ignore_index=True)
+sampled_final_df = pd.concat(sampled_results_list, ignore_index=True)
+
+# List to store results for all models.
+logprobs_results_list = []
+
+# For each service and model in our dictionary, run the survey and extract results.
+for service, models in logprobs_model_dict.items():
+    for model_name in models:
+        print(f"Running survey for model: {model_name} ({service})")
+        # Run the survey for this model.
+        results_df, model_response = run_survey_for_model(model_name, service, vignettes, data, moral_judgment_survey_results=None, samples=1)
+        # Note: The above function creates its own moral_judgment_survey_results.
+        logprobs_results_list.append(results_df)
+
+# Concatenate the individual DataFrames into one.
+logprobs_final_df = pd.concat(logprobs_results_list, ignore_index=True)
 
 # Send output to csv
-final_df.to_csv("detailed_model_responses_04_15.csv")
+sampled_final_df.to_csv("sampled_model_responses.csv")
+logprobs_final_df.to_csv("logprobs_model_responses.csv")
